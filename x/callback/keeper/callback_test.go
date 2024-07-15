@@ -182,22 +182,22 @@ func (s *KeeperTestSuite) TestSaveCallback() {
 			},
 			expectError: false,
 		},
-		// {
-		// 	testCase: "OK: save callback - sender is contract metadata owner",
-		// 	callback: types.Callback{
-		// 		ContractAddress: contractAddr.String(),
-		// 		JobId:           2,
-		// 		CallbackHeight:  101,
-		// 		ReservedBy:      contractOwnerAcc.Address.String(),
-		// 		FeeSplit: &types.CallbackFeesFeeSplit{
-		// 			TransactionFees:       &validCoin,
-		// 			BlockReservationFees:  &validCoin,
-		// 			FutureReservationFees: &validCoin,
-		// 			SurplusFees:           &validCoin,
-		// 		},
-		// 	},
-		// 	expectError: false,
-		// },
+		{
+			testCase: "OK: save callback - sender is contract registering another callback",
+			callback: types.Callback{
+				ContractAddress: contractAddr.String(),
+				JobId:           2,
+				CallbackHeight:  101,
+				ReservedBy:      contractAddr.String(),
+				FeeSplit: &types.CallbackFeesFeeSplit{
+					TransactionFees:       &validCoin,
+					BlockReservationFees:  &validCoin,
+					FutureReservationFees: &validCoin,
+					SurplusFees:           &validCoin,
+				},
+			},
+			expectError: false,
+		},
 		{
 			testCase: "OK: save callback - sender is contract admin",
 			callback: types.Callback{
