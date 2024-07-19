@@ -1,6 +1,8 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult};
+use cosmwasm_std::{
+    to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult,
+};
 use cw2::set_contract_version;
 
 use crate::error::ContractError;
@@ -69,33 +71,71 @@ pub mod execute {
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
+pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
         QueryMsg::GetCount {} => to_json_binary(&query::count(deps)?),
+        QueryMsg::QueryCallbackError {} => to_json_binary(&query::callback_error(deps)?),
+        QueryMsg::QueryCwErrors {} => to_json_binary(&query::cw_errors(deps, env)?),
     }
 }
 
 pub mod query {
+    use crate::{
+        msg::{QueryErrorsRequest, QueryErrorsResponse},
+        state::{CallbackError, CALLBACK_ERROR},
+    };
+
     use super::*;
 
     pub fn count(deps: Deps) -> StdResult<GetCountResponse> {
         let state = STATE.load(deps.storage)?;
         Ok(GetCountResponse { count: state.count })
     }
+
+    pub fn callback_error(deps: Deps) -> StdResult<Option<CallbackError>> {
+        CALLBACK_ERROR.load(deps.storage)
+    }
+
+    pub fn cw_errors(deps: Deps, env: Env) -> StdResult<QueryErrorsResponse> {
+        let contract_address = env.contract.address.to_string();
+
+        let msg = QueryErrorsRequest {
+            contract_address: contract_address.clone(),
+        };
+
+        let res = deps.querier.query(&cosmwasm_std::QueryRequest::Stargate {
+            path: "/rollapp.cwerrors.v1.Query/Errors".to_string(),
+            data: Binary::from(prost::Message::encode_to_vec(&msg)),
+        })?;
+
+        Ok(res)
+    }
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn sudo(
-    deps: DepsMut,
-    _env: Env,
-    msg: SudoMsg,
-) -> Result<Response, ContractError> {
+pub fn sudo(deps: DepsMut, env: Env, msg: SudoMsg) -> Result<Response, ContractError> {
     match msg {
         SudoMsg::Callback { job_id } => sudo::handle_callback(deps, job_id),
+        SudoMsg::Error {
+            module_name,
+            error_code,
+            contract_address: _,
+            input_payload,
+            error_message,
+        } => sudo::handle_error(
+            deps,
+            env,
+            module_name,
+            error_code,
+            input_payload,
+            error_message,
+        ),
     }
 }
 
 pub mod sudo {
+    use crate::state::{CallbackError, CALLBACK_ERROR};
+
     use super::*;
     use std::u64;
 
@@ -114,6 +154,27 @@ pub mod sudo {
         })?;
 
         Ok(Response::new().add_attribute("action", "handle_callback"))
+    }
+
+    pub fn handle_error(
+        deps: DepsMut,
+        _env: Env,
+        module_name: String,
+        error_code: u32,
+        _input_payload: String,
+        error_message: String,
+    ) -> Result<Response, ContractError> {
+        if module_name == "callback" {
+            CALLBACK_ERROR.save(
+                deps.storage,
+                &Some(CallbackError {
+                    module_name,
+                    code: error_code,
+                    message: error_message,
+                }),
+            )?;
+        }
+        Ok(Response::new())
     }
 }
 
